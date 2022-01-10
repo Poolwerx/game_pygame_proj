@@ -1,12 +1,12 @@
 import pygame
-import os
 import sys
+import os
 
-mapa = ''
-for i in range(1):
-    print('<-------НАЗВАНИЕ КАРТЫ УРОВНЯ------->')
-    a = input()
-    mapa = a
+size = width, height = (1350, 750)
+format_image = '.png'
+screen = pygame.display.set_mode(size)
+clock = pygame.time.Clock()
+fps = 60
 
 
 def load_image(name, color_key=None):
@@ -18,21 +18,27 @@ def load_image(name, color_key=None):
         raise SystemExit(message)
     image = image.convert_alpha()
     if color_key is not None:
-        if color_key is -1:
+        if color_key == -1:
             color_key = image.get_at((0, 0))
         image.set_colorkey(color_key)
     return image
 
 
-pygame.init()
-size = width, height = 550, 550
-screen = pygame.display.set_mode(size)
+tile_image = {'wall': load_image('150wall.png'),
+              'empty': load_image('150floor.png'),
+              'empty2': load_image('150floor_with_rocks.png'),
+              'mushroom': load_image('150mushroom.png'),
+              'key': load_image('150key.png'),
+              'door': load_image('150door.png')}
+warrior_image = load_image('150warrior_right.png')
+mage_image = load_image('150mage_right.png')
+rogue_image = load_image('150rogue_right.png')
+tile_width = tile_height = 150
 
-tile_image = {'wall': load_image('box.png'),
-              'empty': load_image('grass.png')}
-player_image = load_image('pixil-frame-left.png')
 
-tile_width = tile_height = 50
+def terminate():
+    pygame.quit()
+    sys.exit()
 
 
 class ScreenFrame(pygame.sprite.Sprite):
@@ -59,61 +65,6 @@ class Sprite(pygame.sprite.Sprite):
         pass
 
 
-class Tile(Sprite):
-    def __init__(self, tile_type, pos_x, pos_y):
-        super().__init__(sprite_group)
-        self.image = tile_image[tile_type]
-        self.rect = self.image.get_rect().move(tile_width * pos_x, tile_height * pos_y)
-
-
-class Player(Sprite):
-    def __init__(self, pos_x, pos_y):
-        super().__init__(hero_group)
-        self.image = player_image
-        self.rect = self.image.get_rect().move(tile_width * pos_x + 15, tile_height * pos_y + 5)
-        self.pos = (pos_x, pos_y)
-
-    def move(self, x, y):
-        self.pos = (x, y)
-        self.rect = self.image.get_rect().move(tile_width * self.pos[0] + 15,
-                                               tile_height * self.pos[1] + 5)
-
-
-player = None
-ranning = True
-sprite_group = pygame.sprite.Group()
-hero_group = pygame.sprite.Group()
-
-
-def terminate():
-    pygame.quit()
-    sys.exit()
-
-
-def start_screen():
-    intro_text = ['                                ИГРА PYGAME']
-    fon = pygame.transform.scale(load_image('fon.png'), size)
-    screen.blit((fon), (0, 0))
-    font = pygame.font.Font(None, 30)
-    text_coord = 50
-    for line in intro_text:
-        string_rendered = font.render(line, 1, pygame.Color('white'))
-        intro_rect = string_rendered.get_rect()
-        text_coord += 10
-        intro_rect.top = text_coord
-        intro_rect.x = 10
-        text_coord += intro_rect.height
-        screen.blit(string_rendered, intro_rect)
-
-    while True:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                terminate()
-            elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
-                return
-        pygame.display.flip()
-
-
 def load_level(filename):
     filename = 'data/' + filename
     try:
@@ -132,50 +83,174 @@ def generate_level(level):
         for x in range(len(level[y])):
             if level[y][x] == '.':
                 Tile('empty', x, y)
+            elif level[y][x] == ',':
+                Tile('empty2', x, y)
             elif level[y][x] == '#':
                 Tile('wall', x, y)
+            elif level[y][x] == '%':
+                Tile('empty', x, y)
+                Mushrooms('mushroom', x, y)
+            elif level[y][x] == '/':
+                Tile('empty', x, y)
+                Tile('door', x, y)
+            elif level[y][x] == '?':
+                Tile('empty', x, y)
+                key_for_door = Key_(x, y)
             elif level[y][x] == '@':
                 Tile('empty', x, y)
                 new_player = Player(x, y)
                 level[y][x] = '.'
-    return new_player, x, y
+    return new_player, key_for_door, x, y
 
 
-def move(hero, movement):
-    x, y = hero.pos
-    if movement == 'up':
-        if y > 0 and level_map[y - 1][x] == '.':
-            hero.move(x, y - 1)
-    if movement == 'down':
-        if y > 0 and level_map[y + 1][x] == '.':
-            hero.move(x, y + 1)
-    elif movement == 'left':
-        if x >= 0 and level_map[y][x - 1] == '.':
-            hero.move(x - 1, y)
-    elif movement == 'right':
-        if x >= 0 and level_map[y][x + 1] == '.':
-            hero.move(x + 1, y)
+class Tile(pygame.sprite.Sprite):
+    def __init__(self, tile_type, pos_x, pos_y):
+        super().__init__(sprite_group, all_sprites)
+        self.image = tile_image[tile_type]
+        self.rect = self.image.get_rect().move(tile_width * pos_x, tile_height * pos_y)
+        self.add(sprite_group, all_sprites)
 
 
-pygame.display.set_caption('untitled//:game')
-level_map = load_level(mapa)
-hero, max_x, max_y = generate_level(level_map)
-start_screen()
-while ranning:
+class Player(pygame.sprite.Sprite):
+    def __init__(self, pos_x, pos_y):
+        super().__init__()
+        self.class_hero = 'warrior'
+        self.position_hero_in_world = 'right'
+        self.image = warrior_image
+        self.key = False
+        self.rect = self.image.get_rect().move(tile_width * pos_x, tile_height * pos_y)
+        self.pos = (pos_x, pos_y)
+        self.add(hero_group, all_sprites)
+
+    def move_pers(self, movement):
+        x, y = self.pos
+        if movement == 'up':
+            if level_map[y - 1][x] == '/' and self.key is True:
+                terminate()
+            if y > 0 and (level_map[y - 1][x] == '.' or level_map[y - 1][x] == ',' or level_map[y - 1][x] == '?'):
+                if level_map[y - 1][x] == '?':
+                    key_for_door.transform()
+                    self.key = True
+                self.rect = self.rect.move(0, -150)
+                new_x, new_y = self.pos[0], self.pos[1] - 1
+                self.pos = (new_x, new_y)
+        elif movement == 'down':
+            if level_map[y + 1][x] == '/' and self.key is True:
+                terminate()
+            if y > 0 and (level_map[y + 1][x] == '.' or level_map[y + 1][x] == ',' or level_map[y + 1][x] == '?'):
+                if level_map[y + 1][x] == '?':
+                    key_for_door.transform()
+                    self.key = True
+                self.rect = self.rect.move(0, +150)
+                new_x, new_y = self.pos[0], self.pos[1] + 1
+                self.pos = (new_x, new_y)
+        elif movement == 'left':
+            if level_map[y][x - 1] == '/' and self.key is True:
+                terminate()
+            if x >= 0 and (level_map[y][x - 1] == '.' or level_map[y][x - 1] == ',' or level_map[y][x - 1] == '?'):
+                if level_map[y][x - 1] == '?':
+                    key_for_door.transform()
+                    self.key = True
+                self.rect = self.rect.move(-150, 0)
+                new_x, new_y = self.pos[0] - 1, self.pos[1]
+                self.pos = (new_x, new_y)
+                self.position_hero_in_world = 'left'
+                self.image = load_image('150' + self.class_hero + '_' + self.position_hero_in_world + format_image)
+        elif movement == 'right':
+            if level_map[y][x + 1] == '/' and self.key is True:
+                terminate()
+            if x >= 0 and (level_map[y][x + 1] == '.' or level_map[y][x + 1] == ',' or level_map[y][x + 1] == '?'):
+                if level_map[y][x + 1] == '?':
+                    key_for_door.transform()
+                    self.key = True
+                self.rect = self.rect.move(+150, 0)
+                new_x, new_y = self.pos[0] + 1, self.pos[1]
+                self.pos = (new_x, new_y)
+                self.position_hero_in_world = 'right'
+                self.image = load_image('150' + self.class_hero + '_' + self.position_hero_in_world + format_image)
+
+    def switch_hero(self):
+        if self.class_hero == 'warrior':
+            self.class_hero = 'mage'
+            self.image = load_image('150' + self.class_hero + '_' + self.position_hero_in_world + format_image)
+        elif self.class_hero == 'mage':
+            self.class_hero = 'rogue'
+            self.image = load_image('150' + self.class_hero + '_' + self.position_hero_in_world + format_image)
+        elif self.class_hero == 'rogue':
+            self.class_hero = 'warrior'
+            self.image = load_image('150' + self.class_hero + '_' + self.position_hero_in_world + format_image)
+
+
+class Mushrooms(pygame.sprite.Sprite):
+    def __init__(self, tile_type, pos_x, pos_y):
+        super().__init__()
+        self.image = tile_image[tile_type]
+        self.rect = self.image.get_rect().move(tile_width * pos_x, tile_height * pos_y)
+        self.add(mushroom_group, all_sprites)
+
+
+class Key_(pygame.sprite.Sprite):
+    def __init__(self, pos_x, pos_y):
+        super().__init__()
+        self.image = tile_image['key']
+        self.rect = self.image.get_rect().move(tile_width * pos_x, tile_height * pos_y)
+        self.add(key_group, all_sprites)
+
+    def transform(self):
+        self.image = tile_image['empty']
+
+
+class Camera:
+    # зададим начальный сдвиг камеры
+    def __init__(self):
+        self.dx = 0
+        self.dy = 0
+
+    # сдвинуть объект obj на смещение камеры
+    def apply(self, obj):
+        obj.rect.x += self.dx
+        obj.rect.y += self.dy
+
+    # позиционировать камеру на объекте target
+    def update(self, target):
+        self.dx = -(target.rect.x + target.rect.w // 2 - width // 2)
+        self.dy = -(target.rect.y + target.rect.h // 2 - height // 2)
+
+
+all_sprites = pygame.sprite.Group()
+hero_group = pygame.sprite.Group()
+sprite_group = pygame.sprite.Group()
+mushroom_group = pygame.sprite.Group()
+key_group = pygame.sprite.Group()
+level_map = load_level("map1.txt")
+hero, key_for_door, level_x, level_y = generate_level(level_map)
+camera = Camera()
+running = True
+while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
-            ranning = False
-        elif event.type == pygame.KEYDOWN:
+            terminate()
+        if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_UP:
-                move(hero, 'up')
+                hero.move_pers('up')
             if event.key == pygame.K_DOWN:
-                move(hero, 'down')
-            if event.key == pygame.K_RIGHT:
-                move(hero, 'right')
+                hero.move_pers('down')
             if event.key == pygame.K_LEFT:
-                move(hero, 'left')
-    screen.fill(pygame.Color('black'))
+                hero.move_pers('left')
+            if event.key == pygame.K_RIGHT:
+                hero.move_pers('right')
+            if event.key == pygame.K_SPACE:
+                hero.switch_hero()
+            if event.key == pygame.K_ESCAPE:
+                print('1')
+    camera.update(hero)
+    for sprite in all_sprites:
+        camera.apply(sprite)
+    screen.fill(pygame.Color(0, 0, 0))
     sprite_group.draw(screen)
+    mushroom_group.draw(screen)
+    key_group.draw(screen)
     hero_group.draw(screen)
     pygame.display.flip()
-pygame.quit()
+    clock.tick(fps)
+terminate()
