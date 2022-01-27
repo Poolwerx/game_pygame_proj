@@ -726,6 +726,7 @@ def game_running():
         sprite_group = pygame.sprite.Group()
         mushroom_group = pygame.sprite.Group()
         key_group = pygame.sprite.Group()
+        mushrooms = []
         level_map = ''
         if hero.stop > 10:
             level_map = load_level("map_trap.txt")
